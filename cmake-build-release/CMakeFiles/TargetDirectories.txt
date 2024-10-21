@@ -1,0 +1,3 @@
+C:/Users/32018/CLionProjects/mouse/cmake-build-release/CMakeFiles/mouse.dir
+C:/Users/32018/CLionProjects/mouse/cmake-build-release/CMakeFiles/edit_cache.dir
+C:/Users/32018/CLionProjects/mouse/cmake-build-release/CMakeFiles/rebuild_cache.dir
