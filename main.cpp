@@ -144,8 +144,8 @@ void LogMessage(const wstring& message) {
     // 创建日志目录
     if (!CreateDirectoryRecursively(expandedDir)) {
         WCHAR errorMsg[256];
-        swprintf_s(errorMsg, L"Failed to create directory: %lu", GetLastError());
-        MessageBoxW(nullptr, errorMsg, expandedDir, MB_OK);
+        // swprintf_s(errorMsg, L"Failed to create directory: %lu", GetLastError());
+        // MessageBoxW(nullptr, errorMsg, expandedDir, MB_OK);
         return;
     }
 
