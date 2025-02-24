@@ -5,8 +5,8 @@ project(mouse)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# 添加可执行文件
-add_executable(mouse main.cpp)
+# 设置为 Windows GUI 应用程序
+add_executable(mouse WIN32 main.cpp)
 
 # 链接 Windows API 库
 target_link_libraries(mouse
@@ -18,8 +18,6 @@ target_link_libraries(mouse
         ole32
         oleaut32
         uuid
-        odbc32
-        odbccp32
 )
 
 # 移除 /MT 标志（如果存在）

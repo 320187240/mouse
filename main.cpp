@@ -7,7 +7,7 @@
 #include <functional>
 #include <mutex>
 #include <locale>
-#include <codecvt>
+#include <iostream>
 
 using namespace std;
 
@@ -41,7 +41,9 @@ class ClipboardManager {
 public:
     static bool CopyToClipboard(const wstring& text) {
         lock_guard<mutex> lock(clipboardMutex);
-        if (!OpenClipboard(nullptr)) return false;
+        if (!OpenClipboard(nullptr)) {
+            return false;
+        }
 
         EmptyClipboard();
         HGLOBAL hGlobal = GlobalAlloc(GMEM_MOVEABLE, (text.size() + 1) * sizeof(wchar_t));
@@ -91,32 +93,92 @@ public:
 
         // 发送输入事件
         UINT sent = SendInput(static_cast<UINT>(inputs.size()), inputs.data(), sizeof(INPUT));
+
         if (sent != inputs.size()) {
             throw runtime_error("Failed to send all input events");
         }
+
         Sleep(delay);
     }
 };
 
-void LogException(const exception& e) {
-    // 展开环境变量
-    WCHAR expandedPath[MAX_PATH];
-    ExpandEnvironmentStringsW(LOG_PATH, expandedPath, MAX_PATH);
+// 递归创建目录的辅助函数
+bool CreateDirectoryRecursively(const wstring& path) {
+    size_t pos = 0;
+    wstring currentPath;
+
+    // 逐级检查并创建目录
+    while ((pos = path.find(L'\\', pos)) != wstring::npos) {
+        currentPath = path.substr(0, pos);
+        if (!currentPath.empty() && !CreateDirectoryW(currentPath.c_str(), nullptr)) {
+            DWORD error = GetLastError();
+            return false; // 创建失败且不是因为目录已存在
+        }
+        pos++;
+    }
+
+    // 创建最后一级目录
+    if (!CreateDirectoryW(path.c_str(), nullptr)) {
+        DWORD error = GetLastError();
+        return error == ERROR_ALREADY_EXISTS; // 如果已存在，返回 true
+    }
+
+    return true;
+}
+
+void LogMessage(const wstring& message) {
     WCHAR expandedDir[MAX_PATH];
-    ExpandEnvironmentStringsW(LOG_DIR, expandedDir, MAX_PATH);
+    WCHAR expandedPath[MAX_PATH];
+
+    // 展开环境变量
+    if (ExpandEnvironmentStringsW(LOG_DIR, expandedDir, MAX_PATH) == 0) {
+        MessageBoxW(nullptr, L"Failed to expand LOG_DIR", L"Error", MB_OK);
+        return;
+    }
+
+    if (ExpandEnvironmentStringsW(LOG_PATH, expandedPath, MAX_PATH) == 0) {
+        MessageBoxW(nullptr, L"Failed to expand LOG_PATH", L"Error", MB_OK);
+        return;
+    }
 
     // 创建日志目录
-    CreateDirectoryW(expandedDir, nullptr);
-
-    // 将宽字符路径转换为UTF-8字符串
-    wstring_convert<codecvt_utf8<wchar_t>> converter;
-    string narrowPath = converter.to_bytes(expandedPath);
-
-    // 打开日志文件并写入异常信息
-    ofstream logFile(narrowPath, ios::app);
-    if (logFile) {
-        logFile << "[" << __DATE__ << " " << __TIME__ << "] ERROR: " << e.what() << endl;
+    if (!CreateDirectoryRecursively(expandedDir)) {
+        WCHAR errorMsg[256];
+        swprintf_s(errorMsg, L"Failed to create directory: %lu", GetLastError());
+        MessageBoxW(nullptr, errorMsg, expandedDir, MB_OK);
+        return;
     }
+
+    // 打开日志文件
+    wofstream logFile(expandedPath, ios::app);
+    if (!logFile.is_open()) {
+        DWORD error = GetLastError();
+        WCHAR errorMsg[256];
+        swprintf_s(errorMsg, L"Failed to open log file: %lu", error);
+        MessageBoxW(nullptr, errorMsg, L"Error", MB_OK);
+        return;
+    }
+
+    // 写入日志并刷新
+    logFile << L"[DEBUG] Log file opened successfully" << endl;
+    logFile << message << endl;
+    logFile.flush();  // 强制刷新
+
+    logFile.close();
+}
+
+void LogException(const exception& e) {
+    SYSTEMTIME st;
+    GetLocalTime(&st);
+    WCHAR timeStr[64];
+    swprintf_s(timeStr, L"%04d-%02d-%02d %02d:%02d:%02d",
+               st.wYear, st.wMonth, st.wDay, st.wHour, st.wMinute, st.wSecond);
+
+    string narrowWhat = e.what();
+    wstring wideWhat(narrowWhat.begin(), narrowWhat.end());
+
+    wstring message = L"[" + wstring(timeStr) + L"] ERROR: " + wideWhat;
+    LogMessage(message);
 }
 
 void ExecuteSafely(function<void()> task) noexcept {
@@ -127,7 +189,7 @@ void ExecuteSafely(function<void()> task) noexcept {
                 try {
                     task();
                 } catch (const exception& e) {
-                    LogException(e);
+                    LogException(e);  // 捕获并记录异常
                 }
                 g_threadCompleted = true;
             }).detach();
@@ -172,7 +234,20 @@ LRESULT CALLBACK KeyboardHook(int nCode, WPARAM wParam, LPARAM lParam) {
 }
 
 int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
+    // 隐藏控制台窗口
     ShowWindow(GetConsoleWindow(), SW_HIDE);
+
+    // 弹出启动成功消息框
+    SYSTEMTIME st;
+    GetLocalTime(&st);
+    WCHAR timeStr[64];
+    swprintf_s(timeStr, L"%04d-%02d-%02d %02d:%02d:%02d",
+               st.wYear, st.wMonth, st.wDay, st.wHour, st.wMinute, st.wSecond);
+
+    wstring startMessage = L"=====应用启动成功=时间: " + wstring(timeStr) + L"=====";
+    LogMessage(startMessage);
+
+    MessageBoxW(nullptr, L"应用启动成功", L"启动", MB_OK);
 
     try {
         ScopedHook keyboardHook(WH_KEYBOARD_LL, KeyboardHook);
@@ -191,5 +266,6 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
         LogException(e);
         return EXIT_FAILURE;
     }
+
     return EXIT_SUCCESS;
 }
